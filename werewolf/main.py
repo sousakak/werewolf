@@ -1,20 +1,11 @@
 import functools, random
-from typing import Callable, NoReturn, Tuple
+from typing import Optional
 from abc import ABC, abstractmethod
+from __future__ import annotations
 
 ### Errors ###
-class WrongNumberOfRoles(Exception):
-    pass
-
-class UnknownRole(KeyError):
-    pass
-
-class WrongNumberOfConvicts(Exception):
-    pass
-
-class PlayerError(Exception):
-    def __str__(self) -> str:
-        return super().__str__()
+    
+### Utilities ###
 
 ### Role classes ###
 class Player(ABC):
@@ -37,70 +28,56 @@ class Player(ABC):
     killer: Optional[:class:`str`]
         When the player died, the cause of death is in this variable.
         This will contain one of the following:
-
         - ``vote``: The player died by daylight vote
+        - Player name: The player died by action of the player with this name
 
-    role
+    game: Optional[:class:`Game`]
+        The game instance which this player belongs to.
+        This is set when the game starts, so you don't have to set it by yourself.
+        
+    role: Optional[:class:`str`]
         A role of this player.
         Since this is an abstract property, please set the string value
         in each class.
-        Also, when you create custom roles, do not forget
-        to create setters as needed.
+
+    team: Optional[:class:`str`]
+        The team which this player belongs to.
+        Since this is an abstract property, please set the string value
+        in each class.
     """
+
     def __init__(self, name: str) -> None:
-        self.name = name
-        self.killer = None
-        self.add_data(self.team)
+        self.name: str = name
+        self.killer: Optional[str] = None
+        self.game: Optional[Game] = None
+
+    def __bool__(self) -> bool:
+        """Returns True if the player is alive, False if the player is dead."""
+        return self.killer is None
+
+    def __str__(self):
+        return f"{self.name} ({self.role})"
 
     @property
     @abstractmethod
     def role(self):
+        """Abstract property for role. Please set the string value in each class."""
         pass
 
     @property
     @abstractmethod
     def team(self):
+        """Abstract property for team. Please set the string value in each class."""
         pass
+
+    @property
+    def game(self) -> Optional[Game]:
+        return self.game
     
-    # game settings
-    convict_number_per_time = 1
-
-    # game data
-    survivors: dict[str, list[str]] = {
-        'list': []
-    }
-
-    victims: dict[str, list[str]] = {
-        'list': []
-    }
-
-    teams: list[str] = []
-
-    def add_data(self, team: str) -> None:
-        if Player.survivors.get(team) == None:
-            Player.survivors[team] = [self.name]
-            Player.teams.append(team) # if文分けた方がいい?
-        else:
-            Player.survivors[team].append(self.name)
-
-    def die(self, reason: str):
-        """Wipe the target who is a surviving player from the world."""
-        if self.name in self.survivors['list']:
-            match reason:
-                case 'vote':
-                    self.killer = 'vote'
-            self.survivors['list'].remove(self.name)
-            self.victims['list'].append(self.name) # ここをどうにかしたい
-            if self.team in self.victims:
-                self.victims[self.team].append(self.name)
-            else:
-                self.victims[self.team] = [self.name]
-        else: # error handling
-            if self.name in self.victims['list']:
-                errmsg = "player already dead"
-            else:
-                errmsg = "unknown player given"
-            raise PlayerError(errmsg)
+    @game.setter
+    def game(self, game: Game):
+        """A setter for game property. This is used to register the game instance to the player."""
+        if self.game is None: self.game = game
 
 class Villager(Player):
     def __init__(self, name) -> None:
@@ -126,65 +103,60 @@ class Wolf(Player):
     def team(self):
         return 'wolf'
 
-""" This is a list of default roles. There are some aliases """
-DEFSULT_ROLES_LIST = {
-    'villager': Villager, 'vil': Villager,
-    'werewolf': Wolf, 'wolf': Wolf
-}
+### Game class ###
+class Game():
+    """A class which manages the game.
+    
+    Please start a game by creating an instance of this class."""
+    def __init__(self, asgmt: dict[str, Player]) -> None:
+        # Initialize game data
+        self.players: dict[str, Player] = asgmt
+        self.day: int = 0
+        self.isNight: bool = False
 
-### Utilities ###
-def instantiate_role(role: str, roles_list: dict) -> type | NoReturn:
-    if role in roles_list:
-        return roles_list[role]
-    else:
-        raise UnknownRole("Unknown role specified")
+        # Survivors and corpses data
+        self.survivors: list[str] = list(self.players.keys())
+        self.corpses: list[str] = []
 
-# 終了確認関数のラッパー
-def isOver(f: Callable[[], str | None]) -> Tuple[bool, str | None]:
-    @functools.wraps(f)
-    def _wrapper(*args, **keywords):
-        result = False
-        termination = f(*args, **keywords)
-        # タスク：ここで処理を
-        if termination != None:
-            result = True
-        return result, termination
-    return _wrapper
+        # Team information
+        self.teams: dict[str] = {}
+        for player in self.players.values():
+            if player.team not in self.teams:
+                self.teams[player.team] = [player]
+            else:
+                self.teams[player.team].append(player)
 
-### For default ###
-# デフォルトで使用される終了確認関数
-@isOver
-def determ() -> str | None:
-    termination = None
-    if len(Player.survivors['innocent']) <= len(Player.survivors['wolf']):
-        termination = 'wolf'
-    return termination
+        # Register game to players
+        for player in self.players.values():
+            player.game = self
 
-### Main ###
-# assignは役職クラスのリスト
-def assign(players: list[str], assign: list[str], classes: dict = DEFSULT_ROLES_LIST) -> dict | NoReturn:
-    if len(players) != len(assign):
-        raise WrongNumberOfRoles("The number of assigned roles does not match the number of players")
-    asgmt = {}
-    random.shuffle(assign)
-    for i, role in enumerate(assign):
-        instance: Player = instantiate_role(role, classes)(players[i])
-        asgmt[players[i]] = instance
-        instance.survivors['list'].append(players[i])
-    return asgmt
+    def __len__(self) -> int:
+        return len(self.survivors)
 
-def day_act(convict: Player | list, determfunc: Callable[[], str | None] = determ) -> bool | NoReturn:
-    if issubclass(type(convict), Player):
-        if convict.convict_number_per_time == 1:
-            convict.die('vote')
-        else:
-            raise WrongNumberOfConvicts("The number of convict people is different from the game setting")
-    elif type(convict) == list:
-        if Player.convict_number_per_time == len(convict):
-            for player in convict:
-                player.die('vote')
-        else:
-            raise WrongNumberOfConvicts("The number of convict people is different from the game setting")
-    else:
-        raise TypeError("convict must be list or instance of Player subclass only")
-    return determfunc()
+    def __getitem__(self, name: str) -> Player:
+        return self.players[name]
+
+    def __bool__(self) -> bool:
+        return self.isNight
+
+    def __str__(self) -> str:
+        return f"Game ({len(self.survivors)} players survived)"
+
+    @staticmethod
+    def assign(members: list[str], roles: list[Player]) -> Player:
+        """A static method to assign random roles to players and create a game instance."""
+        asgmt = {m: r for m, r in zip(members, random.sample(roles, len(roles)))}
+        return Game(asgmt)
+
+    def dawn(self):
+        self.day += 1
+        self.isNight = False
+
+    def dusk(self):
+        self.isNight = True
+
+    def dayAct(self, act: function):
+        act()
+
+    def nightAct(self, act: function):
+        act()
