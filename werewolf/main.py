@@ -176,15 +176,24 @@ class Game():
         return Game(asgmt)
 
     def dawn(self):
+        """
+        Proceed to the next day.
+        """
         self.day += 1
         self.isNight = False
         self.acted = []
 
     def dusk(self):
+        """
+        Proceed to the next night.
+        """
         self.isNight = True
         self.acted = []
 
     def dayAct(self, name: str, act: function = lambda _: None):
+        """
+        A method for daytime action. This is called when a player performs an action during the day.
+        """
         act(self)
         self.acted.append(name)
         if self.survivors == self.acted:
@@ -193,6 +202,9 @@ class Game():
         return False
 
     def nightAct(self, name: str, act: function = lambda _: None):
+        """
+        A method for nighttime action. This is called when a player performs an action during the night.
+        """
         act(self)
         self.acted.append(name)
         if self.survivors == self.acted:
@@ -201,6 +213,10 @@ class Game():
         return False
     
     def kill(self, name: str, killer: Optional[str] = None):
+        """
+        A method to kill a player. This can be called by a player's action or
+        by other things such as a daytime vote.
+        """
         self.players[name].killer = killer
         self.survivors.remove(name)
         self.corpses.append(name)
