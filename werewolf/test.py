@@ -9,7 +9,7 @@ class Parent(ABC):
     # ここでsetterを定義しても何も変わらない
     #  setterのみのデコレータで子孫クラスで定義しないと、セットできない
     #  setterとabstractmethodの両方のデコレータのとき、子孫クラスでsetterを定義しなくてもエラーはおきない
-        
+
 class Child(Parent):
     def __init__(self):
         self.a = "あ"
