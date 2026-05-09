@@ -1,9 +1,14 @@
-import functools, random
+import random
 from typing import Optional, Type
 from abc import ABC, abstractmethod
 from __future__ import annotations
 
 ### Errors ###
+class VoteValueError(ValueError):
+    """
+    An error which is raised when a vote value is invalid.
+    """
+    DEFAULT_MESSAGE: str = "Invalid vote value."
 
 ### Utilities ###
 
@@ -25,7 +30,7 @@ class Player(ABC):
     ----------
     name: :class:`str`
         The name of the player.
-    
+
     killer: Optional[:class:`str`]
         When the player died, the cause of death is in this variable.
         This will contain one of the following:
@@ -52,7 +57,7 @@ class Player(ABC):
         self.killer: Optional[str] = None
         self.__game: Optional[Game] = None
 
-    def __bool__(self) -> bool:
+    def __bool__(self):
         """
         Returns True if the player is alive, False if the player is dead.
         """
@@ -143,7 +148,10 @@ class Game():
         # Survivors and corpses data
         self.survivors: list[str] = list(self.players.keys())
         self.corpses: list[str] = []
+
+        # Action data
         self.acted: list[str] = []
+        self.__votes: dict[str | int, dict[str, str]] = {}
 
         # Team information
         self.teams: dict[str] = {}
@@ -174,6 +182,37 @@ class Game():
         """A static method to assign random roles to players and create a game instance."""
         asgmt = {m: r(m) for m, r in zip(members, random.sample(roles, len(roles)))}
         return Game(asgmt)
+
+    def votes(self, name: str | int) -> dict[str, str]:
+        """
+        A method to get votes for a specific name.
+        """
+        return self.__votes.get(name)
+
+    def newVote(self, name: str | int):
+        """
+        A method to create a new vote for a specific name.
+        """
+        if type(name) not in [str, int]:
+            raise VoteValueError("Vote name must be a string or an integer.")
+        if name in self.__votes:
+            raise VoteValueError(f"Vote for {name} already exists.")
+        self.__votes[name] = {}
+
+    def vote(self, name: str | int, voter: str, target: str) -> bool:
+        """
+        A method to vote for a specific name. This is called when a player votes for someone during the day.
+        """
+        if name not in self.__votes:
+            raise VoteValueError(f"Vote for {name} does not exist.")
+        if target not in self.survivors:
+            # Warn here in the future
+            return False
+        if voter in self.__votes[name]:
+            # Warn here in the future
+            return False
+        self.__votes[name][voter] = target
+        return True
 
     def dawn(self):
         """
@@ -211,7 +250,7 @@ class Game():
             self.dusk()
             return True
         return False
-    
+
     def kill(self, name: str, killer: Optional[str] = None):
         """
         A method to kill a player. This can be called by a player's action or
